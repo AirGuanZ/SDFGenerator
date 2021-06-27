@@ -1,0 +1,4 @@
+﻿asset/*.obj
+build/
+
+!asset/bunny.obj
