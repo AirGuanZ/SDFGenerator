@@ -3,6 +3,7 @@
 #include "camera.h"
 #include "sdf.h"
 #include "sdf_renderer.h"
+#include "sdf_shadow.h"
 
 class DirectX11SDFDemo : public Demo
 {
@@ -12,20 +13,33 @@ public:
 
 private:
 
-    SDF sdf_;
+    enum Mode
+    {
+        SDFVis,
+        SDFShadow,
+    };
 
-    SDFRenderer sdfRenderer_;
+    Mode mode_;
+
+    SDF                  sdf_;
+    VertexBuffer<Vertex> mesh_;
+
+    SDFRenderer       sdfRenderer_;
+    SDFShadowRenderer sdfShadowRenderer_;
 
     Camera camera_;
 
     std::string objFilename_;
-    int         signRayCount_ = 3;
-    int         sdfRes_       = 64;
+    int         signRayCount_ = 12;
+    int         sdfRes_       = 128;
 
     SDFGenerator sdfGen_;
 
     int   maxTraceSteps_ = 128;
-    float absThreshold_  = 0.01f;
+    float absThreshold_  = 0.001f;
+
+    float shadowK_         = 30;
+    float shadowRayOffset_ = 0.01f;
 
     ImGui::FileBrowser fileBrowser_;
 
@@ -34,11 +48,13 @@ private:
         window_->setMaximized();
 
         sdfRenderer_.initilalize();
+        sdfShadowRenderer_.initialize();
 
         objFilename_ = "./asset/bunny.obj";
         loadMesh();
 
-        camera_.setPosition(Float3(-4, 0, 0));
+        camera_.setPosition(Float3(0, 0, -4));
+        camera_.setDirection(3.1415926f / 2, 0);
         camera_.setPerspective(60.0f, 0.1f, 100.0f);
 
         fileBrowser_.SetTitle("Select Obj");
@@ -63,6 +79,20 @@ private:
 
         if(ImGui::Begin("Settings", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
         {
+            static const char *modeNames[] = {
+                "Visualizer", "Shadow"
+            };
+            if(ImGui::BeginCombo("Mode", modeNames[mode_]))
+            {
+                for(int i = 0; i < 2; ++i)
+                {
+                    const bool selected = mode_ == i;
+                    if(ImGui::Selectable(modeNames[i], selected))
+                        mode_ = static_cast<Mode>(i);
+                }
+                ImGui::End();
+            }
+
             ImGui::InputInt("Max Steps", &maxTraceSteps_);
             ImGui::InputFloat("Abs Threshold", &absThreshold_);
 
@@ -72,11 +102,17 @@ private:
             ImGui::InputInt("SDF Res", &sdfRes_);
             sdfRes_ = (std::max)(sdfRes_, 1);
 
+            if(ImGui::Button("Regenerate"))
+                loadMesh();
+
             ImGui::InputInt("Sign Ray Count", &signRayCount_);
             signRayCount_ = (std::max)(signRayCount_, 1);
 
-            if(ImGui::Button("Regenerate"))
-                loadMesh();
+            if(mode_ == SDFShadow)
+            {
+                ImGui::SliderFloat("Shadow K", &shadowK_, 0, 50);
+                ImGui::InputFloat("Shadow Ray Offset", &shadowRayOffset_, 0, 0, 8);
+            }
         }
         ImGui::End();
 
@@ -106,12 +142,25 @@ private:
         camera_.recalculateMatrics();
 
         window_->clearDefaultDepth(1);
-        window_->clearDefaultRenderTarget({ 0, 1, 1, 0 });
+        window_->clearDefaultRenderTarget({ 0, 0, 0, 0 });
 
-        sdfRenderer_.setCamera(camera_);
-        sdfRenderer_.setSDF(sdf_.lower, sdf_.upper, sdf_.srv);
-        sdfRenderer_.setTracer(maxTraceSteps_, absThreshold_);
-        sdfRenderer_.render();
+        if(mode_ == SDFVis)
+        {
+            sdfRenderer_.setCamera(camera_);
+            sdfRenderer_.setSDF(sdf_.lower, sdf_.upper, sdf_.srv);
+            sdfRenderer_.setTracer(maxTraceSteps_, absThreshold_);
+            sdfRenderer_.render();
+        }
+        else if(mode_ == SDFShadow)
+        {
+            sdfShadowRenderer_.setCamera(camera_);
+            sdfShadowRenderer_.setSDF(sdf_.lower, sdf_.upper, sdf_.srv);
+            sdfShadowRenderer_.setLight(
+                Float3(-1, -1, 1).normalize(), Float3(1));
+            sdfShadowRenderer_.setTracer(
+                shadowRayOffset_, shadowK_, maxTraceSteps_, absThreshold_);
+            sdfShadowRenderer_.render(mesh_);
+        }
     }
 
     void loadMesh()
@@ -128,13 +177,18 @@ private:
         const float maxExtent = (bbox.high - bbox.low).max_elem();
         const Float3 offset = -0.5f * (bbox.high + bbox.low);
         const float scale = 2 / maxExtent;
-        
+
+        std::vector<Vertex> vertexData;
         std::vector<Float3> vertices, normals;
         for(auto &t : tris)
         {
             for(auto &v : t.vertices)
             {
-                vertices.push_back(scale * (v.position + offset));
+                const Float3 vp = scale * (v.position + offset);
+                vertexData.push_back({
+                    vp, v.normal, Float3(0.5f)
+                });
+                vertices.push_back(vp);
                 normals.push_back(v.normal);
             }
         }
@@ -143,6 +197,8 @@ private:
         sdf_ = sdfGen_.generateGPU(
             vertices.data(), normals.data(), tris.size(),
             Float3(-1.2f), Float3(1.2f), Int3(sdfRes_));
+
+        mesh_.initialize(vertexData.size(), vertexData.data());
     }
 };
 
