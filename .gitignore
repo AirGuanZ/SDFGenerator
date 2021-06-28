@@ -1,4 +1,5 @@
 ﻿asset/*.obj
+asset/output.txt
 build/
 
 !asset/bunny.obj

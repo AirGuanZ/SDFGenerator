@@ -16,11 +16,15 @@
 #pragma warning(pop)
 #endif
 
-#include "bvh.h"
-#include "ray.h"
+#include <d3d11-sdf/bvh.h>
+#include <d3d11-sdf/ray.h>
+
+D3D11_SDF_BEGIN
 
 namespace
 {
+
+    constexpr float FLOAT_INF = std::numeric_limits<float>::infinity();
 
     float dot2(const Float3 &v)
     {
@@ -155,12 +159,12 @@ void BVH::build(
 {
     // build
 
-    agz::math::aabb3f globalBBox = { Float3(InfFlt), Float3(-InfFlt) };
+    agz::math::aabb3f globalBBox = { Float3(FLOAT_INF), Float3(-FLOAT_INF) };
     std::vector<bvh::BoundingBox<float>> primBBoxes(triangleCount);
     std::vector<bvh::Vector3<float>>     primCenters(triangleCount);
     for(size_t i = 0, j = 0; i < triangleCount; ++i, j += 3)
     {
-        agz::math::aabb3f primBBox = { Float3(InfFlt), Float3(-InfFlt) };
+        agz::math::aabb3f primBBox = { Float3(FLOAT_INF), Float3(-FLOAT_INF) };
         primBBox |= vertices[j];
         primBBox |= vertices[j + 1];
         primBBox |= vertices[j + 2];
@@ -295,7 +299,7 @@ float BVH::sdf(const Float3 &p, int signRayCount, float upperBound) const
         const Float3 dst = 1.0f / 3 * (a + b + c);
         const Float3 dir = dst - p;
 
-        const size_t inctTriIdx = traceTriangleIndex(p, dir, InfFlt);
+        const size_t inctTriIdx = traceTriangleIndex(p, dir, FLOAT_INF);
         if(inctTriIdx == TRI_IDX_NIL)
             continue;
 
@@ -449,3 +453,5 @@ std::pair<size_t, float> BVH::udf2(
     auto right = udf2(p, (std::min)(left.second, u2), node.childIndex + 1);
     return left.second < right.second ? left : right;
 }
+
+D3D11_SDF_END

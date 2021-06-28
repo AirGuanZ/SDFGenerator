@@ -1,8 +1,10 @@
 #include <agz-utils/console.h>
 #include <agz-utils/thread.h>
 
-#include "bvh.h"
-#include "sdf.h"
+#include <d3d11-sdf/bvh.h>
+#include <d3d11-sdf/sdf.h>
+
+D3D11_SDF_BEGIN
 
 namespace
 {
@@ -96,7 +98,7 @@ void SDFGenerator::setSignRayCount(int count)
     signRayCount_ = count;
 }
 
-SDF SDFGenerator::generate(
+std::vector<float> SDFGenerator::generate(
     const Float3 *vertices,
     const Float3 *normals,
     size_t        triangleCount,
@@ -104,42 +106,9 @@ SDF SDFGenerator::generate(
     const Float3 &upper,
     const Int3   &res) const
 {
-    auto data = generateSDFData(
-        vertices, normals, triangleCount, signRayCount_, lower, upper, res);
-
-    D3D11_TEXTURE3D_DESC texDesc;
-    texDesc.Width          = static_cast<UINT>(res.x);
-    texDesc.Height         = static_cast<UINT>(res.y);
-    texDesc.Depth          = static_cast<UINT>(res.z);
-    texDesc.MipLevels      = 1;
-    texDesc.Format         = DXGI_FORMAT_R32_FLOAT;
-    texDesc.Usage          = D3D11_USAGE_IMMUTABLE;
-    texDesc.BindFlags      = D3D11_BIND_SHADER_RESOURCE;
-    texDesc.CPUAccessFlags = 0;
-    texDesc.MiscFlags      = 0;
-
-    D3D11_SUBRESOURCE_DATA texSubrscData;
-    texSubrscData.pSysMem          = data.data();
-    texSubrscData.SysMemPitch      = sizeof(float) * res.x;
-    texSubrscData.SysMemSlicePitch = sizeof(float) * res.x * res.y;
-
-    auto tex = device.createTex3D(texDesc, &texSubrscData);
-
-    D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc;
-    srvDesc.Format                    = DXGI_FORMAT_R32_FLOAT;
-    srvDesc.ViewDimension             = D3D11_SRV_DIMENSION_TEXTURE3D;
-    srvDesc.Texture3D.MipLevels       = 1;
-    srvDesc.Texture3D.MostDetailedMip = 0;
-
-    auto srv = device.createSRV(tex, srvDesc);
-
-    SDF result;
-    result.srv   = std::move(srv);
-    result.res   = res;
-    result.lower = lower;
-    result.upper = upper;
-
-    return result;
+    return generateSDFData(
+        vertices, normals, triangleCount,
+        signRayCount_, lower, upper, res);
 }
 
 SDF SDFGenerator::generateGPU(
@@ -152,8 +121,12 @@ SDF SDFGenerator::generateGPU(
 {
     // prepare shader
 
+    const char *SDF_SRC =
+#include <d3d11-sdf/sdf.hlsl>
+    ;
+
     if(!shader_.isAllStageAvailable())
-        shader_.initializeStageFromFile<CS>("./asset/sdf.hlsl", nullptr, "CSMain");
+        shader_.initializeStage<CS>(SDF_SRC, nullptr, "CSMain");
 
     auto shaderRscs = shader_.createResourceManager();
 
@@ -257,10 +230,13 @@ SDF SDFGenerator::generateGPU(
     deviceContext->CopyResource(resultTex.Get(), outputTex.Get());
 
     SDF result;
-    result.srv   = resultSRV;
+    result.tex   = std::move(resultTex);
+    result.srv   = std::move(resultSRV);
     result.res   = res;
     result.lower = lower;
     result.upper = upper;
 
     return result;
 }
+
+D3D11_SDF_END

@@ -65,6 +65,7 @@ float2 intersectRayBox(float3 o, float3 d)
     return float2(max(0.0f, t0), t1);
 }
 
+// see https://www.iquilezles.org/www/articles/rmshadows/rmshadows.htm
 float shadowFactor(float3 o, float3 d)
 {
     float2 incts = intersectRayBox(o, d);
@@ -72,6 +73,7 @@ float shadowFactor(float3 o, float3 d)
         return 1;
 
     float result = 1;
+    float ph = 1e20;
 
     float t = incts.x;
     for(int i = 0; i < MaxTraceSteps; ++i)
@@ -81,7 +83,12 @@ float shadowFactor(float3 o, float3 d)
         float sdf = SDF.SampleLevel(SDFSampler, uvw, 0);
         float udf = abs(sdf);
 
-        result = min(result, ShadowK * udf / t);
+        float y = udf * udf / (2.0 * ph);
+        float m = sqrt(udf * udf - y * y);
+        result = min(result, ShadowK * m / max(0.0f, t - y));
+        ph = udf;
+        //result = min(result, ShadowK * udf / t);
+
         if(udf < AbsThreshold)
             return 0;
 
