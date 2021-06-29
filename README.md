@@ -1,6 +1,6 @@
 ## GPU SDF Generator
 
-Fast 3D signed distance field generator written with DirectX 11 compute shader
+GPU 3D signed distance field generator, written with DirectX 11 compute shader
 
 ![](./gallery/1.png)
 
@@ -37,7 +37,7 @@ OPTION(D3D11SDF_BUILD_CLI    "build SDF cli tool" ON)
 
 ### Output format
 
-SDF-CLI write generated SDF values into a text file with following pseudocode:
+SDF-CLI writes generated values into a text file, using the following pseudocode:
 
 ```
 file.write(width)  file.write(" ")
